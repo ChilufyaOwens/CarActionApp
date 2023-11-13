@@ -3,6 +3,8 @@ using AuctionService.DTOs;
 using AuctionService.Entities;
 using AutoMapper;
 using AutoMapper.QueryableExtensions;
+using Contracts;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,11 +16,15 @@ public class AuctionController : ControllerBase
 {
     private readonly AuctionDbContext _context;
     private readonly IMapper _mapper;
+    private readonly IPublishEndpoint _piPublishEndpoint;
 
-    public AuctionController(AuctionDbContext context, IMapper mapper)
+    public AuctionController(AuctionDbContext context, 
+        IMapper mapper, 
+        IPublishEndpoint piPublishEndpoint)
     {
         _context = context;
         _mapper = mapper;
+        _piPublishEndpoint = piPublishEndpoint;
     }
 
     [HttpGet]
@@ -61,15 +67,19 @@ public class AuctionController : ControllerBase
         auction.Seller = "test";
 
         _context.Auctions.Add(auction);
+        
+        var newAuction = _mapper.Map<AuctionDto>(auction);
+        await _piPublishEndpoint.Publish(_mapper.Map<AuctionCreated>(newAuction));
 
         var result = await _context.SaveChangesAsync() > 0;
+        
         if (!result)
         {
             return BadRequest("Could not save changes to the DB");
         }
 
         return CreatedAtAction(nameof(GetAuctionById), new {auction.Id}, 
-            _mapper.Map<AuctionDto>(auction));
+        newAuction);
     }
 
     [HttpPut("{id:guid}")]
@@ -89,6 +99,8 @@ public class AuctionController : ControllerBase
         auction.Item.Color = updateRequest.Color ?? auction.Item.Color;
         auction.Item.Mileage = updateRequest.Mileage ?? auction.Item.Mileage;
         auction.Item.Year = updateRequest.Year ?? auction.Item.Year;
+
+        await _piPublishEndpoint.Publish(_mapper.Map<AuctionUpdated>(auction));
 
         var result = await _context.SaveChangesAsync() > 0;
 
@@ -113,6 +125,8 @@ public class AuctionController : ControllerBase
         //TODO: check Seller = username;
 
         _context.Auctions.Remove(auction);
+
+        await _piPublishEndpoint.Publish<AuctionDeleted>(new { Id = auction.Id.ToString() });
 
         var result = await _context.SaveChangesAsync() > 0;
         if (!result)
