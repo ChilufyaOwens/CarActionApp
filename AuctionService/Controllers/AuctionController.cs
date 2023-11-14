@@ -5,6 +5,7 @@ using AutoMapper;
 using AutoMapper.QueryableExtensions;
 using Contracts;
 using MassTransit;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -59,12 +60,13 @@ public class AuctionController : ControllerBase
         return _mapper.Map<AuctionDto>(auction);
     }
 
+    [Authorize]
     [HttpPost]
     public async Task<ActionResult<AuctionDto>> CreateAuction(CreateAuctionDto request)
     {
         var auction = _mapper.Map<Auction>(request);
-        //TODO: add current user as seller 
-        auction.Seller = "test";
+
+        auction.Seller = User.Identity.Name;
 
         _context.Auctions.Add(auction);
         
@@ -82,6 +84,7 @@ public class AuctionController : ControllerBase
         newAuction);
     }
 
+    [Authorize]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult> UpdateAuction(Guid id, UpdateAuctionDto updateRequest)
     {
@@ -92,8 +95,12 @@ public class AuctionController : ControllerBase
         {
             return NotFound();
         }
+
+        if (auction.Seller != User.Identity.Name)
+        {
+            return Forbid();
+        }
         
-        //TODO: check Seller equals username
         auction.Item.Make = updateRequest.Make ?? auction.Item.Make;
         auction.Item.Model = updateRequest.Model ?? auction.Item.Model;
         auction.Item.Color = updateRequest.Color ?? auction.Item.Color;
@@ -112,6 +119,7 @@ public class AuctionController : ControllerBase
         return BadRequest("An error occurred while updating an auction");
     }
 
+    [Authorize]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> DeleteAuction(Guid id)
     {
@@ -121,8 +129,11 @@ public class AuctionController : ControllerBase
         {
             return NotFound();
         }
-        
-        //TODO: check Seller = username;
+
+        if (auction.Seller != User.Identity.Name)
+        {
+            return Forbid();
+        }
 
         _context.Auctions.Remove(auction);
 
